@@ -1,0 +1,10 @@
+# icp-system runs the control plane; icp-models runs the model servers it manages.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: icp-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: icp-models

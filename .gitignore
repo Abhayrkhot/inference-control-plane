@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# local state and secrets
+.env
+icp.db
+*.db-journal
+.hpc_known_hosts
+
+# web
+web/node_modules/
+web/dist/

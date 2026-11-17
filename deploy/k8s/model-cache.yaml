@@ -1,0 +1,13 @@
+# Shared Hugging Face cache, so a new revision of the same model does not download it again.
+# kind's local-path storage is ReadWriteOnce, which works because kind has one node.
+# On a multi-node cluster use ReadWriteMany storage (NFS, EFS, Filestore...).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: icp-model-cache
+  namespace: icp-models
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 50Gi

@@ -1,0 +1,89 @@
+# The control plane API, running inside the cluster. For day-to-day development you can
+# instead run it on your machine with `make api` (see the README).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: icp-api-data
+  namespace: icp-system
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: icp-api
+  namespace: icp-system
+  labels:
+    app.kubernetes.io/name: icp-api
+spec:
+  replicas: 1 # rollouts run inside the process; do not scale this out
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: icp-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: icp-api
+    spec:
+      serviceAccountName: icp-api
+      containers:
+        - name: api
+          image: icp-api:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: ICP_DATABASE_URL
+              value: sqlite:////data/icp.db
+            - name: ICP_PROMETHEUS_URL
+              value: http://kps-prometheus.monitoring.svc:9090
+            - name: ICP_SLURM_SSH_KEY_PATH
+              value: /etc/icp-ssh/id_ed25519
+            - name: ICP_SLURM_KNOWN_HOSTS_PATH
+              value: /etc/icp-ssh/known_hosts
+            - name: ICP_SLURM_SSH_USER
+              valueFrom:
+                secretKeyRef:
+                  name: icp-hpc-ssh
+                  key: user
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: ssh
+              mountPath: /etc/icp-ssh
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: icp-api-data
+        - name: ssh
+          secret:
+            secretName: icp-hpc-ssh
+            defaultMode: 0400
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: icp-api
+  namespace: icp-system
+  labels:
+    app.kubernetes.io/name: icp-api
+spec:
+  selector:
+    app.kubernetes.io/name: icp-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

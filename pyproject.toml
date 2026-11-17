@@ -1,0 +1,16 @@
+# Tool configuration for the whole repo. Each Python package (api/, cli/, fake-vllm/)
+# has its own pyproject.toml; `make setup` installs all three into one .venv.
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["icp_api", "icp_cli", "fake_vllm"]
+
+[tool.pytest.ini_options]
+testpaths = ["api/tests", "cli/tests", "fake-vllm/tests"]
+addopts = "-q"

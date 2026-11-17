@@ -1,0 +1,31 @@
+# kube-prometheus-stack, trimmed for a laptop kind cluster.
+# Install with `make monitoring`.
+fullnameOverride: kps
+
+alertmanager:
+  enabled: false
+grafana:
+  enabled: false # the control plane UI has its own charts; enable if you want dashboards
+nodeExporter:
+  enabled: false
+kubeStateMetrics:
+  enabled: false
+# These control-plane components are not reachable on kind and only produce scrape errors.
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    scrapeInterval: 5s
+    # Pick up PodMonitors and ServiceMonitors from every namespace, not only this release's.
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorNamespaceSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    retention: 2d

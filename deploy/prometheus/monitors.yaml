@@ -1,0 +1,37 @@
+# Scrape every model server pod the control plane manages: vLLM pods on Kubernetes, and
+# gateway pods for Slurm jobs (whose port 8000 is vLLM, through the tunnel).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: icp-model-servers
+  namespace: icp-models
+spec:
+  selector:
+    matchLabels:
+      icp/managed: "true"
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 5s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_icp_deployment]
+          targetLabel: deployment
+        - sourceLabels: [__meta_kubernetes_pod_label_icp_revision]
+          targetLabel: revision
+        - sourceLabels: [__meta_kubernetes_pod_label_icp_backend]
+          targetLabel: backend
+---
+# The control plane's own metrics: rollout durations, results and rollback reasons.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: icp-api
+  namespace: icp-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: icp-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

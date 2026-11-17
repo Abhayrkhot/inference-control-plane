@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --job-name={{ job_name }}
+#SBATCH --partition={{ slurm.partition }}
+#SBATCH --gres=gpu:{% if slurm.gpu_type %}{{ slurm.gpu_type }}:{% endif %}{{ slurm.gpus }}
+#SBATCH --cpus-per-task={{ slurm.cpus }}
+#SBATCH --mem={{ slurm.mem }}
+#SBATCH --time={{ slurm.time_limit }}
+#SBATCH --output={{ run_dir }}/slurm-%j.out
+# Rendered by the inference control plane for {{ deployment }} r{{ number }}. Do not edit by hand.
+set -euo pipefail
+
+RUN_DIR={{ run_dir | q }}
+SIF={{ sif_path | q }}
+export HF_HUB_CACHE={{ hf_cache | q }}
+mkdir -p "$HF_HUB_CACHE"
+{% if module_load %}module load {{ module_load }}
+{% endif %}{% for key, value in env %}export {{ key }}={{ value | q }}
+{% endfor %}
+# Compute nodes are shared, so pick a free port and publish it for the control plane.
+PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("", 0)); print(s.getsockname()[1])')
+echo "$(hostname):${PORT}" > "$RUN_DIR/endpoint.tmp"
+mv "$RUN_DIR/endpoint.tmp" "$RUN_DIR/endpoint"
+echo "icp: serving {{ deployment }} r{{ number }} on $(hostname):${PORT}"
+
+exec apptainer exec --nv --bind {{ root | q }} "$SIF" \
+  vllm serve {{ model | q }} --host 0.0.0.0 --port "$PORT" --served-model-name {{ deployment | q }}{% for arg in vllm_args %} {{ arg | q }}{% endfor %}
