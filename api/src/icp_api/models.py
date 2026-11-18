@@ -16,6 +16,7 @@ class RevisionStatus(StrEnum):
     ACTIVE = "active"  # serving traffic
     FAILED = "failed"  # never took traffic; torn down
     SUPERSEDED = "superseded"  # served traffic, then replaced; torn down
+    STOPPED = "stopped"  # served traffic until the operator stopped it; torn down, history kept
 
 
 class Deployment(SQLModel, table=True):

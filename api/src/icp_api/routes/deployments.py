@@ -134,6 +134,37 @@ async def delete_deployment(name: str, request: Request, s: SessionDep) -> Respo
     return Response(status_code=204)
 
 
+@router.post("/deployments/{name}/stop", response_model=DeploymentOut)
+async def stop_deployment(name: str, request: Request, s: SessionDep) -> DeploymentOut:
+    """Tear down the serving revision and free its resources, but keep the deployment's
+    revisions, events and timings. Roll out or roll back later to serve again."""
+    deployment = find_deployment(s, name)
+    if any(r.status in IN_FLIGHT for r in revisions_of(s, deployment)):
+        raise HTTPException(409, "a rollout is in progress; wait for it to finish")
+    active = s.get(Revision, deployment.active_revision_id) if deployment.active_revision_id else None
+    if active is None:
+        raise HTTPException(400, f"{name} is not serving anything")
+    backend = request.app.state.backends.get(active.backend)
+    if backend is None:
+        raise HTTPException(400, f"backend {active.backend!r} is not configured")
+    await backend.deactivate(deployment.name)
+    await backend.teardown(revision_ref(active, deployment.name))
+    active.status = RevisionStatus.STOPPED
+    deployment.active_revision_id = None
+    s.add(active)
+    s.add(deployment)
+    s.add(
+        RolloutEvent(
+            revision_id=active.id,
+            deployment_id=deployment.id,
+            kind="stopped",
+            message=f"r{active.number} stopped by the operator; its resources were released",
+        )
+    )
+    s.commit()
+    return deployment_out(s, deployment)
+
+
 @router.post("/deployments/{name}/rollouts", response_model=RevisionOut, status_code=202)
 async def create_rollout(name: str, spec: DeploymentSpec, request: Request, s: SessionDep) -> RevisionOut:
     return revision_out(start_rollout(request, s, find_deployment(s, name), spec))
@@ -150,7 +181,8 @@ async def rollback(name: str, request: Request, s: SessionDep, body: RollbackReq
         if target.id == deployment.active_revision_id:
             raise HTTPException(400, f"r{target.number} is already serving")
     else:
-        target = next((r for r in revisions_of(s, deployment) if r.status == RevisionStatus.SUPERSEDED), None)
+        served = (RevisionStatus.SUPERSEDED, RevisionStatus.STOPPED)
+        target = next((r for r in revisions_of(s, deployment) if r.status in served), None)
         if target is None:
             raise HTTPException(400, "no earlier revision that served traffic")
     spec = DeploymentSpec.model_validate(target.spec)

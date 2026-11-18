@@ -1,6 +1,6 @@
 // Types mirror api/src/icp_api/schemas.py.
 
-export type RevisionStatus = "pending" | "rolling_out" | "active" | "failed" | "superseded";
+export type RevisionStatus = "pending" | "rolling_out" | "active" | "failed" | "superseded" | "stopped";
 
 export interface DeploymentSpec {
   model: string;
@@ -92,6 +92,7 @@ export const api = {
     request<Revision>(`/deployments/${name}/rollouts`, post(spec)),
   rollback: (name: string, revision?: number) =>
     request<Revision>(`/deployments/${name}/rollback`, post({ revision: revision ?? null })),
+  stop: (name: string) => request<Deployment>(`/deployments/${name}/stop`, { method: "POST" }),
   remove: (name: string) => request<void>(`/deployments/${name}`, { method: "DELETE" }),
 };
 

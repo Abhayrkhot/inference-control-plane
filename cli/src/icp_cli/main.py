@@ -22,7 +22,7 @@ app = typer.Typer(
 )
 console = Console()
 
-TERMINAL = {"active", "failed", "superseded"}
+TERMINAL = {"active", "failed", "superseded", "stopped"}
 EVENT_STYLES = {
     "failed": "red",
     "teardown_failed": "red",
@@ -289,25 +289,41 @@ def metrics(name: str) -> None:
     """Current queue depth, throughput and latency, from Prometheus."""
     with api() as c:
         data = check(c.get(f"/deployments/{name}/metrics")).json()
+    current = data["current"]
     rows = [
         ("queue_depth", "Queue depth", "{:.0f}"),
         ("running", "Running requests", "{:.0f}"),
         ("tokens_per_second", "Generated tokens/s", "{:.1f}"),
-        ("p99_latency_seconds", "p99 request latency", "{:.3f}s"),
-        ("p99_ttft_seconds", "p99 time to first token", "{:.3f}s"),
     ]
     table = Table("METRIC", "VALUE")
     for key, label, fmt in rows:
-        value = data["current"].get(key)
+        value = current.get(key)
         table.add_row(label, "-" if value is None else fmt.format(value))
     console.print(table)
+
+    def cell(key: str) -> str:
+        value = current.get(key)
+        return "-" if value is None else f"{value * 1000:.0f} ms" if value < 1 else f"{value:.2f} s"
+
+    latency = Table("LATENCY (last 5 min)", "p50", "p90", "p95", "p99")
+    for kind, label in (("latency", "Request"), ("ttft", "Time to first token")):
+        latency.add_row(label, *(cell(f"p{p}_{kind}_seconds") for p in (50, 90, 95, 99)))
+    console.print(latency)
+
+
+@app.command()
+def stop(name: str) -> None:
+    """Stop serving and free the GPU, keeping the deployment's history (rollback restarts it)."""
+    with api() as c:
+        check(c.post(f"/deployments/{name}/stop"))
+    console.print(f"stopped {name}; its history is kept (`icp rollback {name}` serves it again)")
 
 
 @app.command()
 def delete(name: str, yes: Annotated[bool, typer.Option("--yes", "-y", help="Do not ask")] = False) -> None:
-    """Tear down a deployment and forget its history."""
+    """Tear down a deployment and permanently forget its history (use `stop` to keep it)."""
     if not yes:
-        typer.confirm(f"Delete {name} and tear down what it is serving?", abort=True)
+        typer.confirm(f"Delete {name}, tear down what it serves, and erase its history?", abort=True)
     with api() as c:
         check(c.delete(f"/deployments/{name}"))
     console.print(f"deleted {name}")

@@ -6,6 +6,7 @@ const LABELS: Record<RevisionStatus, string> = {
   active: "serving",
   failed: "failed",
   superseded: "replaced",
+  stopped: "stopped",
 };
 
 // The dot carries the status color; the label always says it in words.

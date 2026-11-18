@@ -48,6 +48,10 @@ export default function DeploymentDetail() {
     mutationFn: (revision?: number) => api.rollback(name, revision),
     onSuccess: () => queryClient.invalidateQueries(),
   });
+  const stop = useMutation({
+    mutationFn: () => api.stop(name),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
   const remove = useMutation({
     mutationFn: () => api.remove(name),
     onSuccess: () => {
@@ -62,7 +66,7 @@ export default function DeploymentDetail() {
   const active = d.active_revision;
   const latest = d.latest_revision;
   const inFlight = latest?.status === "rolling_out" || latest?.status === "pending";
-  const actionError = rollback.error ?? remove.error;
+  const actionError = rollback.error ?? stop.error ?? remove.error;
 
   return (
     <>
@@ -81,9 +85,17 @@ export default function DeploymentDetail() {
             Roll back
           </button>
           <button
+            onClick={() => window.confirm(`Stop ${d.name}? Its history is kept.`) && stop.mutate()}
+            disabled={inFlight || !active || stop.isPending}
+          >
+            Stop
+          </button>
+          <button
             className="danger"
             disabled={inFlight || remove.isPending}
-            onClick={() => window.confirm(`Delete ${d.name} and tear down what it serves?`) && remove.mutate()}
+            onClick={() =>
+              window.confirm(`Delete ${d.name}, tear down what it serves, and erase its history?`) && remove.mutate()
+            }
           >
             Delete
           </button>
@@ -132,7 +144,7 @@ export default function DeploymentDetail() {
                   <td className="mono">{rev.spec.vllm_args.join(" ") || "–"}</td>
                   <td className="muted">{timingSummary(rev) || "–"}</td>
                   <td>
-                    {rev.status === "superseded" && (
+                    {(rev.status === "superseded" || rev.status === "stopped") && (
                       <button className="small" disabled={inFlight} onClick={() => rollback.mutate(rev.number)}>
                         Roll back to this
                       </button>

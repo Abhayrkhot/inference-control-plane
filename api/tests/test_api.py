@@ -111,6 +111,37 @@ def test_events_logs_and_delete(client, backend):
     assert client.get("/api/deployments").json() == []
 
 
+def test_stop_keeps_history_and_rollback_brings_it_back(client, backend):
+    create(client)
+    wait_for(client, "chat", 1)
+
+    response = client.post("/api/deployments/chat/stop")
+    assert response.status_code == 200, response.text
+    assert response.json()["active_revision"] is None
+    assert backend.deactivated == ["chat"]
+    assert backend.torn_down == [1]
+    rev = client.get("/api/deployments/chat/revisions").json()[0]
+    assert rev["status"] == "stopped"
+    assert rev["total_seconds"] is not None  # timings survive
+    assert client.get("/api/deployments/chat/events").json()[-1]["kind"] == "stopped"
+    assert client.post("/api/deployments/chat/stop").status_code == 400  # nothing serving now
+
+    response = client.post("/api/deployments/chat/rollback", json={})
+    assert response.status_code == 202, response.text
+    assert response.json()["source_revision"] == 1
+    assert wait_for(client, "chat", 2)["status"] == "active"
+
+
+def test_model_queries_cover_latency_percentiles():
+    from icp_api.metrics import model_queries
+
+    queries = model_queries("chat")
+    for kind in ("latency", "ttft"):
+        for p, q in ((50, "0.5"), (90, "0.9"), (95, "0.95"), (99, "0.99")):
+            assert queries[f"p{p}_{kind}_seconds"].startswith(f"histogram_quantile({q}, ")
+    assert 'model_name="chat"' in queries["p95_latency_seconds"]
+
+
 def test_metrics_endpoints(client):
     assert client.get("/healthz").json() == {"ok": True}
     create(client)

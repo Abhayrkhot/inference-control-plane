@@ -2,11 +2,13 @@
 with simulated latency and queueing, and no GPU."""
 
 import asyncio
+import json
 import random
 import time
 import uuid
 
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     CollectorRegistry,
@@ -26,6 +28,8 @@ class CompletionRequest(BaseModel):
     model: str
     prompt: str | list[str] = ""
     max_tokens: int = 16
+    stream: bool = False
+    stream_options: dict | None = None
 
 
 class ChatRequest(BaseModel):
@@ -68,11 +72,14 @@ def create_app(
     def models() -> dict:
         return {"object": "list", "data": [{"id": served_name, "object": "model", "root": model}]}
 
-    async def generate(requested: str, prompt_len: int, max_tokens: int) -> tuple[str, int]:
+    def check(requested: str) -> None:
         if requested != served_name:
             raise HTTPException(404, f"The model `{requested}` does not exist.")
         if fail == "completions":
             raise HTTPException(500, "fake-vllm: injected completion failure")
+
+    async def tokens(prompt_len: int, n: int):
+        """Yield n tokens at the configured speed, recording vLLM-style metrics."""
         t0 = time.perf_counter()
         waiting.inc()
         try:
@@ -81,30 +88,57 @@ def create_app(
             waiting.dec()
         running.inc()
         try:
-            n = max(1, min(max_tokens, 256))
             await asyncio.sleep(0.01 + random.random() * 0.02)  # prefill
             ttft.observe(time.perf_counter() - t0)
-            await asyncio.sleep(n / tokens_per_second)  # decode
+            for i in range(n):
+                yield "lorem" if i == 0 else " lorem"
+                await asyncio.sleep(1 / tokens_per_second)  # decode
         finally:
             running.dec()
             slots.release()
         e2e.observe(time.perf_counter() - t0)
         generation_tokens.inc(n)
         prompt_tokens.inc(prompt_len)
-        return " ".join(["lorem"] * n), n
+
+    async def generate(requested: str, prompt_len: int, max_tokens: int) -> tuple[str, int]:
+        check(requested)
+        n = max(1, min(max_tokens, 256))
+        return "".join([t async for t in tokens(prompt_len, n)]), n
 
     def usage(prompt_len: int, n: int) -> dict:
         return {"prompt_tokens": prompt_len, "completion_tokens": n, "total_tokens": prompt_len + n}
 
     @app.post("/v1/completions")
-    async def completions(req: CompletionRequest) -> dict:
+    async def completions(req: CompletionRequest):
         prompt = req.prompt if isinstance(req.prompt, str) else " ".join(req.prompt)
         prompt_len = len(prompt.split())
+        completion_id = f"cmpl-{uuid.uuid4().hex[:12]}"
+        created = int(time.time())
+
+        def chunk(**fields) -> str:
+            body = {"id": completion_id, "object": "text_completion", "created": created, "model": served_name}
+            return f"data: {json.dumps(body | fields)}\n\n"
+
+        if req.stream:  # server-sent events, like vLLM's OpenAI server
+            check(req.model)
+            n = max(1, min(req.max_tokens, 256))
+            include_usage = bool((req.stream_options or {}).get("include_usage"))
+
+            async def events():
+                async for token in tokens(prompt_len, n):
+                    yield chunk(choices=[{"index": 0, "text": token, "finish_reason": None, "logprobs": None}])
+                yield chunk(choices=[{"index": 0, "text": "", "finish_reason": "length", "logprobs": None}])
+                if include_usage:
+                    yield chunk(choices=[], usage=usage(prompt_len, n))
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(events(), media_type="text/event-stream")
+
         text, n = await generate(req.model, prompt_len, req.max_tokens)
         return {
-            "id": f"cmpl-{uuid.uuid4().hex[:12]}",
+            "id": completion_id,
             "object": "text_completion",
-            "created": int(time.time()),
+            "created": created,
             "model": served_name,
             "choices": [{"index": 0, "text": text, "finish_reason": "length", "logprobs": None}],
             "usage": usage(prompt_len, n),

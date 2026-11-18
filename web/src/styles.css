@@ -379,3 +379,9 @@ button.small {
     grid-column: 1 / -1;
   }
 }
+
+.percentiles td.num,
+.percentiles th:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

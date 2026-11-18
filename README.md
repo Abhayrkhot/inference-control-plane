@@ -85,6 +85,10 @@ scratch, check a model by hand, then:
   --partition gpu-short --gpu-type a100 --constraint a100@80g --time-limit 01:00:00
 ```
 
+## Benchmarks
+
+Measured on Explorer GPUs through the control plane: [benchmarks/2026-11-18-explorer.md](benchmarks/2026-11-18-explorer.md) (Qwen2.5 1.5B / 7B / 32B on A100s, gpt-oss-120b on an H200).
+
 ## How a rollout works
 
 1. `POST /api/deployments/{name}/rollouts` stores a new revision with an immutable spec.

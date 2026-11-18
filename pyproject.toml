@@ -12,5 +12,5 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 known-first-party = ["icp_api", "icp_cli", "fake_vllm"]
 
 [tool.pytest.ini_options]
-testpaths = ["api/tests", "cli/tests", "fake-vllm/tests"]
+testpaths = ["api/tests", "cli/tests", "fake-vllm/tests", "scripts/tests"]
 addopts = "-q"

@@ -7,8 +7,12 @@ const TILES: { key: string; label: string; fmt: (v: number) => string }[] = [
   { key: "queue_depth", label: "Queue depth", fmt: (v) => v.toFixed(0) },
   { key: "running", label: "Running", fmt: (v) => v.toFixed(0) },
   { key: "tokens_per_second", label: "Tokens / s", fmt: (v) => v.toFixed(1) },
-  { key: "p99_latency_seconds", label: "p99 latency", fmt: fmtSeconds },
-  { key: "p99_ttft_seconds", label: "p99 first token", fmt: fmtSeconds },
+];
+
+const PERCENTILES = [50, 90, 95, 99];
+const LATENCY_ROWS: { kind: string; label: string }[] = [
+  { kind: "latency", label: "Request" },
+  { kind: "ttft", label: "Time to first token" },
 ];
 
 // One measure per chart: these have different units, so they never share an axis.
@@ -70,6 +74,33 @@ export default function MetricsPanel({ name }: { name: string }) {
                 </div>
               );
             })}
+          </div>
+          <div className="table-wrap">
+            <table className="table percentiles">
+              <thead>
+                <tr>
+                  <th>Latency, last 5 min</th>
+                  {PERCENTILES.map((p) => (
+                    <th key={p}>p{p}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {LATENCY_ROWS.map((row) => (
+                  <tr key={row.kind}>
+                    <td>{row.label}</td>
+                    {PERCENTILES.map((p) => {
+                      const value = data?.current[`p${p}_${row.kind}_seconds`];
+                      return (
+                        <td key={p} className="num">
+                          {value == null ? "–" : fmtSeconds(value)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           <div className="charts">
             {CHARTS.map((chart) => {

@@ -23,20 +23,33 @@ ROLLOUTS = Counter("icp_rollouts", "Finished rollouts by result", ["backend", "r
 ROLLBACKS = Counter("icp_rollbacks", "Automatic rollbacks by failure reason", ["backend", "reason"])
 
 
-def model_queries(name: str) -> dict[str, str]:
-    """vLLM labels its metrics with the served model name, which is the deployment name."""
+PERCENTILES = (50, 90, 95, 99)
+_HISTOGRAMS = {
+    "latency": "vllm:e2e_request_latency_seconds_bucket",  # whole request, measured inside vLLM
+    "ttft": "vllm:time_to_first_token_seconds_bucket",  # time to first token
+}
+
+
+def quantile_query(histogram: str, selector: str, percentile: int, window: str = "5m") -> str:
+    return f"histogram_quantile({percentile / 100}, sum by (le) (rate({histogram}{{{selector}}}[{window}])))"
+
+
+def model_queries(name: str, window: str = "5m") -> dict[str, str]:
+    """vLLM labels its metrics with the served model name, which is the deployment name.
+
+    Percentiles come from vLLM's histograms, so they are interpolated within buckets: good for
+    trends and comparisons, coarser than per-request timing from scripts/load_gen.py.
+    """
     sel = f'model_name="{name}"'  # name is validated as a DNS label, so this is safe to inline
-    return {
+    queries = {
         "queue_depth": f"sum(vllm:num_requests_waiting{{{sel}}})",
         "running": f"sum(vllm:num_requests_running{{{sel}}})",
         "tokens_per_second": f"sum(rate(vllm:generation_tokens_total{{{sel}}}[1m]))",
-        "p99_latency_seconds": (
-            f"histogram_quantile(0.99, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{{{sel}}}[5m])))"
-        ),
-        "p99_ttft_seconds": (
-            f"histogram_quantile(0.99, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{{{sel}}}[5m])))"
-        ),
     }
+    for kind, histogram in _HISTOGRAMS.items():
+        for p in PERCENTILES:
+            queries[f"p{p}_{kind}_seconds"] = quantile_query(histogram, sel, p, window)
+    return queries
 
 
 def _number(value: str) -> float | None:
