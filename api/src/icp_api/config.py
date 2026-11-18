@@ -31,10 +31,13 @@ class Settings(BaseSettings):
     # Slurm. Defaults point at Northeastern's Explorer cluster.
     slurm_login_host: str = "login.explorer.northeastern.edu"
     slurm_ssh_user: str = ""
-    slurm_ssh_key_path: str = "~/.ssh/icp_hpc"
+    slurm_ssh_key_path: str = ""  # on Explorer: the key Research Computing issues, ~/.ssh/<user>-<date>
     slurm_known_hosts_path: str = "~/.ssh/known_hosts"
     slurm_root_dir: str = "/scratch/{user}/icp"  # run dirs, the vLLM .sif image, the Hugging Face cache
     slurm_module_load: str = ""  # e.g. "apptainer" if the cluster needs `module load` first
+    # Put the image's CUDA forward-compatibility libraries first, for GPU drivers older than the
+    # image's CUDA (Explorer: driver 570 vs CUDA 13 in vLLM images). hpc/gpu-check.sbatch tells you.
+    slurm_cuda_compat: bool = False
     gateway_image: str = "icp-gateway:dev"
     gateway_ssh_secret: str = "icp-hpc-ssh"
 

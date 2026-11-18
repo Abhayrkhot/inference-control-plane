@@ -14,6 +14,7 @@ export interface DeploymentSpec {
     partition: string;
     gpus: number;
     gpu_type?: string | null;
+    constraint?: string | null;
     cpus: number;
     mem: string;
     time_limit: string;

@@ -83,6 +83,7 @@ def build_spec(base: dict[str, Any] | None, **flags: Any) -> dict[str, Any]:
             "partition": "partition",
             "gpus": "gpus",
             "gpu_type": "gpu_type",
+            "constraint": "constraint",
             "cpus": "slurm_cpus",
             "mem": "slurm_mem",
             "time_limit": "time_limit",
@@ -169,6 +170,7 @@ def deploy(
     partition: Annotated[str | None, typer.Option(help="Slurm partition")] = None,
     gpus: Annotated[int | None, typer.Option(help="Slurm GPUs")] = None,
     gpu_type: Annotated[str | None, typer.Option(help="Slurm GPU type, e.g. a100")] = None,
+    constraint: Annotated[str | None, typer.Option(help="Slurm node features, e.g. a100@80g")] = None,
     slurm_cpus: Annotated[int | None, typer.Option(help="Slurm CPUs per task")] = None,
     slurm_mem: Annotated[str | None, typer.Option(help="Slurm memory, e.g. 32G")] = None,
     time_limit: Annotated[str | None, typer.Option(help="Slurm time limit, e.g. 02:00:00")] = None,
@@ -178,7 +180,7 @@ def deploy(
     flags = dict(
         model=model, backend=backend, image=image, args=args, clear_args=clear_args, env=env,
         replicas=replicas, cpu=cpu, memory=memory, gpu=gpu, partition=partition, gpus=gpus,
-        gpu_type=gpu_type, slurm_cpus=slurm_cpus, slurm_mem=slurm_mem, time_limit=time_limit,
+        gpu_type=gpu_type, constraint=constraint, slurm_cpus=slurm_cpus, slurm_mem=slurm_mem, time_limit=time_limit,
     )  # fmt: skip
     with api() as c:
         existing = c.get(f"/deployments/{name}")

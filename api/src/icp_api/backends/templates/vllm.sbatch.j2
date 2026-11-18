@@ -2,7 +2,8 @@
 #SBATCH --job-name={{ job_name }}
 #SBATCH --partition={{ slurm.partition }}
 #SBATCH --gres=gpu:{% if slurm.gpu_type %}{{ slurm.gpu_type }}:{% endif %}{{ slurm.gpus }}
-#SBATCH --cpus-per-task={{ slurm.cpus }}
+{% if slurm.constraint %}#SBATCH --constraint={{ slurm.constraint }}
+{% endif %}#SBATCH --cpus-per-task={{ slurm.cpus }}
 #SBATCH --mem={{ slurm.mem }}
 #SBATCH --time={{ slurm.time_limit }}
 #SBATCH --output={{ run_dir }}/slurm-%j.out
@@ -12,7 +13,13 @@ set -euo pipefail
 RUN_DIR={{ run_dir | q }}
 SIF={{ sif_path | q }}
 export HF_HUB_CACHE={{ hf_cache | q }}
-mkdir -p "$HF_HUB_CACHE"
+# Apptainer mounts the home directory; keep packages in ~/.local from shadowing the image's.
+export PYTHONNOUSERSITE=1
+# vLLM and Triton caches go to scratch, not the home quota.
+export XDG_CACHE_HOME={{ root | q }}/cache TRITON_CACHE_DIR={{ root | q }}/cache/triton
+mkdir -p "$HF_HUB_CACHE" "$TRITON_CACHE_DIR"
+# Clusters often reach the internet through an HTTP proxy; local requests must bypass it.
+export no_proxy=localhost,127.0.0.1${no_proxy:+,$no_proxy} NO_PROXY=localhost,127.0.0.1${NO_PROXY:+,$NO_PROXY}
 {% if module_load %}module load {{ module_load }}
 {% endif %}{% for key, value in env %}export {{ key }}={{ value | q }}
 {% endfor %}
@@ -21,6 +28,19 @@ PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("", 0)); print(s.
 echo "$(hostname):${PORT}" > "$RUN_DIR/endpoint.tmp"
 mv "$RUN_DIR/endpoint.tmp" "$RUN_DIR/endpoint"
 echo "icp: serving {{ deployment }} r{{ number }} on $(hostname):${PORT}"
+{%- if cuda_compat %}
+{%- set cuda_min_driver = 580 %}{# driver that vLLM's CUDA 13 images need without help #}
+
+# The image's CUDA needs GPU driver >= {{ cuda_min_driver }}. On an older driver (datacenter GPUs
+# only), put the image's CUDA forward-compatibility libraries first; on a newer one, don't.
+DRIVER=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 | cut -d. -f1 || true)
+export CUDA_COMPAT=0
+if [ -n "$DRIVER" ] && [ "$DRIVER" -lt {{ cuda_min_driver }} ]; then CUDA_COMPAT=1; fi
+echo "icp: GPU driver ${DRIVER:-unknown}; CUDA compatibility libraries: $CUDA_COMPAT"
+{%- endif %}
 
 exec apptainer exec --nv --bind {{ root | q }} "$SIF" \
+{%- if cuda_compat %}
+  bash -c 'if [ "$CUDA_COMPAT" = 1 ]; then export LD_LIBRARY_PATH=/usr/local/cuda/compat${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}; fi; exec "$@"' _ \
+{%- endif %}
   vllm serve {{ model | q }} --host 0.0.0.0 --port "$PORT" --served-model-name {{ deployment | q }}{% for arg in vllm_args %} {{ arg | q }}{% endfor %}

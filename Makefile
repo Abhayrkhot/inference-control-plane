@@ -5,7 +5,7 @@ CLUSTER := icp
 # Every kubectl/helm call names the kind context, never whatever context is current.
 KUBECTL := kubectl --context kind-$(CLUSTER)
 HPC_HOST ?= login.explorer.northeastern.edu
-HPC_KEY ?= $(HOME)/.ssh/icp_hpc
+HPC_KEY ?=
 
 .PHONY: help setup test lint api web fake-vllm proxy prom-forward cluster-up images monitoring deploy-api hpc-secret cluster-down
 
@@ -62,8 +62,8 @@ monitoring: ## Install Prometheus (kube-prometheus-stack) and the scrape configs
 deploy-api: ## Run the API inside the cluster instead of on your machine
 	$(KUBECTL) apply -f deploy/k8s/api.yaml
 
-hpc-secret: ## Store the HPC SSH key, host key and user as a secret (HPC_USER=<you>)
-	@test -n "$(HPC_USER)" || (echo "usage: make hpc-secret HPC_USER=<cluster username>"; exit 1)
+hpc-secret: ## Store the HPC SSH key, host key and user as a secret (HPC_USER=, HPC_KEY=)
+	@test -n "$(HPC_USER)" -a -n "$(HPC_KEY)" || (echo "usage: make hpc-secret HPC_USER=<user> HPC_KEY=~/.ssh/<user>-<date>"; exit 1)
 	ssh-keygen -F $(HPC_HOST) | grep -v "^#" > .hpc_known_hosts
 	for ns in icp-system icp-models; do \
 	  $(KUBECTL) -n $$ns create secret generic icp-hpc-ssh --from-file=id_ed25519=$(HPC_KEY) \

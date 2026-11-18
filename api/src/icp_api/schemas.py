@@ -33,6 +33,8 @@ class SlurmOptions(BaseModel):
     partition: str = Field("gpu", pattern=_SLURM_TOKEN)
     gpus: int = Field(1, ge=1, le=8)
     gpu_type: str | None = Field(None, pattern=_SLURM_TOKEN)
+    # Node features, e.g. "a100@80g" for Explorer's 80 GB A100s (see `sinfo -o "%N %f"`).
+    constraint: str | None = Field(None, pattern=r"^[A-Za-z0-9_.@&|\-]+$")
     cpus: int = Field(8, ge=1, le=128)
     mem: str = Field("32G", pattern=r"^\d+[KMGT]?$")
     time_limit: str = Field("02:00:00", pattern=r"^(\d+-)?\d{1,2}(:\d{2}){0,2}$")

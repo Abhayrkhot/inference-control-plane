@@ -64,6 +64,7 @@ def render_sbatch(rev: RevisionRef, settings: Settings) -> str:
         sif_path=rev.spec.image or f"{root}/vllm.sif",
         hf_cache=f"{root}/hf/hub",
         module_load=settings.slurm_module_load,
+        cuda_compat=settings.slurm_cuda_compat,
         env=sorted(rev.spec.env.items()),
         model=rev.spec.model,
         vllm_args=rev.spec.vllm_args,
@@ -139,8 +140,9 @@ class SlurmBackend:
         return f"{run_dir(self.settings, rev)}/slurm-{rev.handle}.out"
 
     async def deploy(self, rev: RevisionRef) -> str:
-        if not self.settings.slurm_ssh_user:
-            raise DeployError(FailureReason.BACKEND_ERROR, "ICP_SLURM_SSH_USER is not set")
+        for setting in ("slurm_ssh_user", "slurm_ssh_key_path"):
+            if not getattr(self.settings, setting):
+                raise DeployError(FailureReason.BACKEND_ERROR, f"ICP_{setting.upper()} is not set")
         d = q(run_dir(self.settings, rev))
         try:
             result = await self.runner.run(

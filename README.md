@@ -81,7 +81,8 @@ See [hpc/README.md](hpc/README.md): set up key-based SSH, pull the vLLM image in
 scratch, check a model by hand, then:
 
 ```bash
-.venv/bin/icp deploy qwen --backend slurm --model Qwen/Qwen2.5-1.5B-Instruct --time-limit 01:00:00
+.venv/bin/icp deploy qwen --backend slurm --model Qwen/Qwen2.5-1.5B-Instruct \
+  --partition gpu-short --gpu-type a100 --constraint a100@80g --time-limit 01:00:00
 ```
 
 ## How a rollout works

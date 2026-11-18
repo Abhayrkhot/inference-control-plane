@@ -26,6 +26,7 @@ function toForm(spec?: DeploymentSpec) {
     partition: spec?.slurm.partition ?? "gpu",
     gpus: String(spec?.slurm.gpus ?? 1),
     gpuType: spec?.slurm.gpu_type ?? "",
+    constraint: spec?.slurm.constraint ?? "",
     slurmMem: spec?.slurm.mem ?? "32G",
     timeLimit: spec?.slurm.time_limit ?? "02:00:00",
   };
@@ -54,6 +55,7 @@ function fromForm(f: FormState): Partial<DeploymentSpec> {
       partition: f.partition,
       gpus: Number(f.gpus),
       gpu_type: f.gpuType.trim() || null,
+      constraint: f.constraint.trim() || null,
       cpus: 8,
       mem: f.slurmMem,
       time_limit: f.timeLimit,
@@ -120,6 +122,7 @@ export default function DeployForm({ name, initial, onDone }: Props) {
             <label>Partition<input {...field("partition")} /></label>
             <label>GPUs<input type="number" min={1} {...field("gpus")} /></label>
             <label>GPU type<input {...field("gpuType")} placeholder="any" /></label>
+            <label>Node constraint<input {...field("constraint")} placeholder="a100@80g" /></label>
             <label>Memory<input {...field("slurmMem")} /></label>
             <label>Time limit<input {...field("timeLimit")} /></label>
           </>

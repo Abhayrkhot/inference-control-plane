@@ -19,6 +19,7 @@ def fast_settings(**overrides: Any) -> Settings:
         "smoke_timeout_s": 1,
         "prometheus_url": "http://127.0.0.1:9",  # nothing listens here
         "slurm_ssh_user": "tester",
+        "slurm_ssh_key_path": "~/.ssh/tester-key",
     }
     return Settings(_env_file=None, **(values | overrides))
 

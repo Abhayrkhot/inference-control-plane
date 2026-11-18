@@ -24,18 +24,32 @@ def test_sbatch_script():
         ref(
             vllm_args=["--max-model-len", "8192"],
             env={"VLLM_LOGGING_LEVEL": "DEBUG"},
-            slurm=SlurmOptions(gpu_type="a100", time_limit="04:00:00"),
+            slurm=SlurmOptions(gpu_type="a100", constraint="a100@80g", time_limit="04:00:00"),
         ),
         fast_settings(),
     )
     assert "#SBATCH --partition=gpu\n" in script
-    assert "#SBATCH --gres=gpu:a100:1\n" in script
+    assert "#SBATCH --gres=gpu:a100:1\n#SBATCH --constraint=a100@80g\n#SBATCH --cpus-per-task=8\n" in script
     assert "#SBATCH --time=04:00:00\n" in script
     assert "#SBATCH --output=/scratch/tester/icp/runs/chat/r2/slurm-%j.out\n" in script
     assert "export VLLM_LOGGING_LEVEL=DEBUG\n" in script
     assert "SIF=/scratch/tester/icp/vllm.sif\n" in script
+    assert "export PYTHONNOUSERSITE=1\n" in script  # ~/.local must not shadow the image's packages
+    assert "export no_proxy=localhost,127.0.0.1" in script
+    assert "cuda/compat" not in script  # off unless ICP_SLURM_CUDA_COMPAT is set
+    assert "export XDG_CACHE_HOME=/scratch/tester/icp/cache " in script
     assert "vllm serve Qwen/Qwen2.5-7B-Instruct --host 0.0.0.0" in script
     assert script.rstrip().endswith("--served-model-name chat --max-model-len 8192")
+
+
+def test_sbatch_script_with_cuda_compat():
+    script = render_sbatch(ref(), fast_settings(slurm_cuda_compat=True))
+    assert "LD_LIBRARY_PATH=/usr/local/cuda/compat" in script
+    # Only on drivers older than the image's CUDA needs; newer drivers run it as-is.
+    assert '[ "$DRIVER" -lt 580 ]; then CUDA_COMPAT=1; fi' in script
+    assert 'if [ "$CUDA_COMPAT" = 1 ]; then export LD_LIBRARY_PATH' in script
+    # The wrapper hands the real command to bash as "$@", so vLLM's arguments stay intact.
+    assert 'exec "$@"\' _ \\\n  vllm serve Qwen/Qwen2.5-7B-Instruct' in script
 
 
 def test_sbatch_script_quotes_untrusted_values():
@@ -49,6 +63,10 @@ def test_slurm_options_reject_injection():
         SlurmOptions(partition="gpu\n#SBATCH --account=other")
     with pytest.raises(ValidationError):
         SlurmOptions(time_limit="2h")
+    with pytest.raises(ValidationError):
+        SlurmOptions(constraint="a100@80g\n#SBATCH --account=other")
+    # Without a constraint, no constraint line is written.
+    assert "--constraint" not in render_sbatch(ref(), fast_settings())
 
 
 def test_deploy_uploads_and_submits_the_script():
