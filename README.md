@@ -87,7 +87,8 @@ scratch, check a model by hand, then:
 
 ## Benchmarks
 
-Measured on Explorer GPUs through the control plane: [benchmarks/2026-11-18-explorer.md](benchmarks/2026-11-18-explorer.md) (Qwen2.5 1.5B / 7B / 32B on A100s, gpt-oss-120b on an H200).
+- [One H200, four models](benchmarks/2026-11-18-h200.md): Qwen2.5 1.5B / 7B / 32B and gpt-oss-120b benchmarked one after another on a single H200, from the GPU node, with p50/p90/p95/p99 request latency, time to first token and time per output token (`hpc/benchmark-models.sbatch`).
+- [Through the control plane](benchmarks/2026-11-18-explorer.md): the same models deployed by the Slurm backend on A100s and an H200 and measured through the SSH gateway.
 
 ## How a rollout works
 

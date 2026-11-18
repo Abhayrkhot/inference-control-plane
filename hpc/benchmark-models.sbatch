@@ -53,13 +53,30 @@ nvidia-smi --query-gpu=timestamp,utilization.gpu,memory.used --format=csv -l 5 >
 SMI=$!
 trap 'kill $SMI 2>/dev/null' EXIT
 
-PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("", 0)); print(s.getsockname()[1])')
-URL=http://127.0.0.1:$PORT
+free_port() { python3 -c 'import socket; s = socket.socket(); s.bind(("", 0)); print(s.getsockname()[1])'; }
+
+# Stop the vLLM server on $PORT and wait until it and its GPU memory are gone. Killing the
+# backgrounded launcher alone is not enough: vLLM runs as its child inside the container.
+stop_server() {
+  pkill -TERM -u "$USER" -f -- "--port $PORT" 2>/dev/null
+  kill "$server" 2>/dev/null
+  for _ in $(seq 1 30); do pgrep -u "$USER" -f -- "--port $PORT" >/dev/null || break; sleep 2; done
+  pkill -KILL -u "$USER" -f -- "--port $PORT" 2>/dev/null
+  wait "$server" 2>/dev/null
+  for _ in $(seq 1 45); do
+    used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
+    [ "${used:-0}" -lt 2000 ] && return 0
+    sleep 2
+  done
+  echo "   warning: GPU still has ${used} MiB in use after stopping the server"
+}
 
 for model in "${MODELS[@]}"; do
   name=$(basename "$model" | tr '[:upper:].' '[:lower:]-')
   log=$OUT/$name-vllm.log
-  echo "== $model ($(date +%H:%M:%S))"
+  PORT=$(free_port)  # a fresh port per model, so a leftover server can never answer for this one
+  URL=http://127.0.0.1:$PORT
+  echo "== $model ($(date +%H:%M:%S), port $PORT)"
   started=$(date +%s)
   in_image vllm serve "$model" --host 127.0.0.1 --port "$PORT" --served-model-name bench \
     --max-model-len 8192 >"$log" 2>&1 &
@@ -71,9 +88,11 @@ for model in "${MODELS[@]}"; do
     kill -0 "$server" 2>/dev/null || break
     sleep 5
   done
-  if [ -z "$ready" ]; then
-    echo "   did not start; last lines of $log:"; tail -15 "$log"
-    kill "$server" 2>/dev/null; wait "$server" 2>/dev/null; continue
+  # Make sure the server answering is the one for this model.
+  served=$(curl -sf -m 5 "$URL/v1/models" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["root"])' 2>/dev/null)
+  if [ -z "$ready" ] || [ "$served" != "$model" ]; then
+    echo "   did not start (answering: ${served:-nothing}); last lines of $log:"; tail -15 "$log"
+    stop_server; continue
   fi
   startup=$(( $(date +%s) - started ))
   weights=$(grep -o "Model loading took [0-9.]* GiB" "$log" | grep -o "[0-9.]*" | head -1)
@@ -96,11 +115,6 @@ row.update(model=os.environ["MODEL"], gpu=os.environ["GPU"], node=os.environ["NO
 print(json.dumps(row))' | tee -a "$OUT/results.jsonl"
   done
 
-  kill "$server" 2>/dev/null; wait "$server" 2>/dev/null
-  for _ in $(seq 1 30); do  # let the GPU memory drain before the next model
-    used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
-    [ "${used:-0}" -lt 2000 ] && break
-    sleep 2
-  done
+  stop_server
 done
 echo "done ($(date +%H:%M:%S)): $OUT/results.jsonl"
